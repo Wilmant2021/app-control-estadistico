@@ -1,6 +1,8 @@
 ﻿import importlib
 import streamlit as st
 from database.connection import init_db
+from database import queries
+from database.seed import seed_database
 
 st.set_page_config(
     page_title='CEC Agroindustrial',
@@ -118,6 +120,10 @@ st.markdown(
 
 st.markdown('# CEC Agroindustrial')
 st.markdown('### Plataforma de control estadístico para procesos agroindustriales')
+
+# Seed de datos de ejemplo cuando la base está vacía
+if len(queries.get_productos()) == 0 and len(queries.get_analistas()) == 0:
+    seed_database()
 st.markdown('Usa la barra lateral para acceder a la gestión de productos, analistas, muestras y generar tus gráficos o reportes.')
 st.markdown('---')
 
