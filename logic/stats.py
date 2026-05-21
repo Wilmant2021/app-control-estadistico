@@ -18,7 +18,6 @@ class QCStats:
         Calcula límites para gráfico X-barra y R.
         df_subgrupos: DataFrame donde cada fila es un subgrupo.
         """
-        # Factores para constantes de gráficos de control (n=2 a n=10)
         A2 = {2: 1.880, 3: 1.023, 4: 0.729, 5: 0.577, 6: 0.483, 7: 0.419, 8: 0.373, 9: 0.337, 10: 0.308}
         D3 = {2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0.076, 8: 0.136, 9: 0.184, 10: 0.223}
         D4 = {2: 3.267, 3: 2.574, 4: 2.282, 5: 2.114, 6: 2.004, 7: 1.924, 8: 1.864, 9: 1.816, 10: 1.777}
@@ -30,11 +29,8 @@ class QCStats:
         x_doble_barra = x_barras.mean()
         r_barra = rangos.mean()
 
-        # Límites X-barra
         ucl_x = x_doble_barra + A2[n] * r_barra
         lcl_x = x_doble_barra - A2[n] * r_barra
-
-        # Límites R
         ucl_r = D4[n] * r_barra
         lcl_r = D3[n] * r_barra
 
@@ -54,13 +50,11 @@ class QCStats:
         """Calcula índices de capacidad Cp y Cpk."""
         media = np.mean(datos)
         sigma = np.std(datos, ddof=1)
-        
         if sigma == 0:
             return 0, 0
-            
+
         cp = (lse - lie) / (6 * sigma)
         cpk = min((lse - media) / (3 * sigma), (media - lie) / (3 * sigma))
-        
         return round(cp, 3), round(cpk, 3)
 
     @staticmethod
@@ -69,13 +63,10 @@ class QCStats:
         defectuosos = np.array(defectuosos)
         n_total = np.array(n_total)
         p = defectuosos / n_total
-        p_barra = sum(defectuosos) / sum(n_total)
-        
-        # El límite varía si n es variable, aquí usamos n promedio para simplificar o n específico
+        p_barra = defectuosos.sum() / n_total.sum()
         sigma_p = np.sqrt((p_barra * (1 - p_barra)) / n_total)
         ucl_p = p_barra + 3 * sigma_p
         lcl_p = np.maximum(0, p_barra - 3 * sigma_p)
-        
         return {
             'p': p,
             'p_barra': p_barra,
@@ -86,7 +77,6 @@ class QCStats:
     @staticmethod
     def calcular_x_barra_s(df_subgrupos):
         """Calcula límites para gráfico X-barra y S."""
-        # Factores para n=2 a n=10
         A3 = {2: 2.659, 3: 1.954, 4: 1.628, 5: 1.427, 6: 1.287, 7: 1.182, 8: 1.099, 9: 1.032, 10: 0.975}
         B3 = {2: 0, 3: 0, 4: 0, 5: 0, 6: 0.030, 7: 0.118, 8: 0.185, 9: 0.239, 10: 0.284}
         B4 = {2: 3.267, 3: 2.568, 4: 2.266, 5: 2.089, 6: 1.970, 7: 1.882, 8: 1.815, 9: 1.761, 10: 1.716}
@@ -118,20 +108,31 @@ class QCStats:
     def calcular_capacidad_completa(datos, lse, lie):
         """Calcula Cp, Cpk, Pp y Ppk."""
         media = np.mean(datos)
-        sigma_st = np.std(datos, ddof=1) # Estimación a corto plazo (simplificada)
-        
-        cp = (lse - lie) / (6 * sigma_st) if sigma_st != 0 else 0
-        cpk = min((lse - media) / (3 * sigma_st), (media - lie) / (3 * sigma_st)) if sigma_st != 0 else 0
-        
-        # Para Pp/Ppk usamos la desviación estándar total
-        pp = cp # En este contexto simplificado son similares
-        ppk = cpk
-        
+        sigma_st = np.std(datos, ddof=1)
+        if sigma_st == 0:
+            return {'cp': 0, 'cpk': 0, 'pp': 0, 'ppk': 0}
+
+        cp = (lse - lie) / (6 * sigma_st)
+        cpk = min((lse - media) / (3 * sigma_st), (media - lie) / (3 * sigma_st))
         return {
             'cp': round(cp, 3),
             'cpk': round(cpk, 3),
-            'pp': round(pp, 3),
-            'ppk': round(ppk, 3)
+            'pp': round(cp, 3),
+            'ppk': round(cpk, 3)
+        }
+
+    @staticmethod
+    def calcular_grafico_c(defectos):
+        """Calcula límites para gráfico C de conteo de defectos."""
+        defectos = np.array(defectos)
+        c_barra = defectos.mean()
+        ucl_c = c_barra + 3 * np.sqrt(c_barra)
+        lcl_c = max(0, c_barra - 3 * np.sqrt(c_barra))
+        return {
+            'c': defectos,
+            'c_barra': c_barra,
+            'ucl_c': ucl_c,
+            'lcl_c': lcl_c
         }
 
     @staticmethod
@@ -149,7 +150,16 @@ class QCStats:
         defectos = np.array(defectos)
         n_unidades = np.array(n_unidades)
         u = defectos / n_unidades
-        u_barra = sum(defectos) / sum(n_unidades)
+        u_barra = defectos.sum() / n_unidades.sum()
         ucl = u_barra + 3 * np.sqrt(u_barra / n_unidades)
         lcl = np.maximum(0, u_barra - 3 * np.sqrt(u_barra / n_unidades))
         return {'u': u, 'u_barra': u_barra, 'ucl': ucl, 'lcl': lcl}
+
+    @staticmethod
+    def calcular_pareto(categorias, valores):
+        """Calcula el diagrama de Pareto a partir de valores por categoría."""
+        df = pd.DataFrame({'Categoria': categorias, 'Frecuencia': valores})
+        df = df.sort_values('Frecuencia', ascending=False)
+        df['Porcentaje'] = 100 * df['Frecuencia'] / df['Frecuencia'].sum()
+        df['PorcentajeCum'] = df['Porcentaje'].cumsum()
+        return df
