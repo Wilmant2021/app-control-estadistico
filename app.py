@@ -31,29 +31,36 @@ selected_page = st.sidebar.radio('Seleccionar sección', list(PAGES.keys()), lab
 st.markdown(
     """
     <style>
+    :root {
+        color-scheme: light dark;
+    }
+
     .stApp {
-        background: linear-gradient(180deg, #071427 0%, #0f172a 100%);
-        color: #f8fafc;
+        background: transparent;
+        color: inherit;
         transition: background-color 200ms ease;
     }
-    /* Soften the top header / nav area to blend with dark mode */
+
     .css-18e3th9,
     .css-1d391kg,
     .css-1v0mbdj {
-        background: linear-gradient(90deg, rgba(7,20,39,0.95) 0%, rgba(11,26,42,0.85) 100%);
-        border-bottom: 1px solid rgba(255,255,255,0.03);
-        box-shadow: 0 6px 18px rgba(2,6,23,0.45);
+        background: rgba(255, 255, 255, 0.85);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
     }
+
     .stSidebar {
-        background: linear-gradient(180deg, rgba(7,20,39,0.98), rgba(15,23,42,0.98));
+        background: rgba(255, 255, 255, 0.92);
     }
+
     div[data-testid="stForm"] {
-        background: rgba(15, 23, 42, 0.95);
+        background: rgba(255, 255, 255, 0.96);
         border: 1px solid rgba(148, 163, 184, 0.18);
         border-radius: 20px;
         padding: 22px 24px 24px;
-        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.4);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
     }
+
     div[data-testid="stForm"] .stButton>button {
         background-color: #14b8a6;
         color: white;
@@ -61,57 +68,100 @@ st.markdown(
         border-radius: 12px;
         padding: 0.85rem 1.2rem;
     }
+
     div[data-testid="stForm"] .stButton>button:hover {
         background-color: #0f766e;
     }
+
     div[data-testid="stForm"] input,
     div[data-testid="stForm"] textarea,
     div[data-testid="stForm"] select {
-        background: #111827;
-        color: #f8fafc;
-        border: 1px solid #334155;
+        background: #ffffff;
+        color: #111111;
+        border: 1px solid #cbd5e1;
         border-radius: 12px;
     }
+
     .section-card {
-        background: rgba(15, 23, 42, 0.9);
+        background: rgba(255, 255, 255, 0.92);
         border: 1px solid rgba(148, 163, 184, 0.18);
         border-radius: 24px;
         padding: 24px 28px;
         margin-bottom: 24px;
-        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.4);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.08);
+        color: inherit;
     }
+
     .section-card-header h2 {
         margin: 0 0 8px;
-        color: #f8fafc;
+        color: inherit;
         font-size: 1.65rem;
     }
+
     .section-card-header p {
         margin: 0 0 18px;
-        color: #94a3b8;
+        color: #475569;
         line-height: 1.6;
     }
+
     .stButton>button {
         background-color: #14b8a6;
         color: white;
     }
+
     .stButton>button:hover {
         background-color: #0d9488;
     }
+
     h1, h2, h3, h4, h5 {
-        color: #f8fafc;
+        color: inherit;
         font-weight: 700;
         letter-spacing: -0.5px;
     }
-    /* Make the main header less harsh */
+
     .stMarkdown h1 {
-        background: linear-gradient(90deg, rgba(20,184,166,0.06), rgba(99,102,241,0.03));
+        background: rgba(20, 184, 166, 0.08);
         padding: 18px 22px;
         border-radius: 12px;
         display: inline-block;
     }
+
     .stAlert {
-        background-color: #1f2937;
+        background-color: rgba(255, 255, 255, 0.92);
         border-color: rgba(148, 163, 184, 0.18);
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .css-18e3th9,
+        .css-1d391kg,
+        .css-1v0mbdj,
+        .stSidebar {
+            background: rgba(15, 23, 42, 0.95);
+        }
+
+        div[data-testid="stForm"],
+        .section-card,
+        .stAlert {
+            background: rgba(15, 23, 42, 0.95);
+            border-color: rgba(148, 163, 184, 0.18);
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.4);
+        }
+
+        div[data-testid="stForm"] input,
+        div[data-testid="stForm"] textarea,
+        div[data-testid="stForm"] select {
+            background: #111827;
+            color: #f8fafc;
+            border: 1px solid #334155;
+        }
+
+        .section-card-header p {
+            color: #94a3b8;
+        }
+
+        .stMarkdown h1 {
+            background: rgba(20, 184, 166, 0.06);
+        }
     }
     </style>
     """,
