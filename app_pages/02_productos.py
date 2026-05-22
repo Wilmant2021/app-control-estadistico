@@ -14,6 +14,8 @@ def render_page():
     catalogo_atributos = [item['nombre_atributo'] for item in queries.get_catalogo_atributos()]
 
     with section_card('Registrar un nuevo producto', 'Añade un producto y configura sus variables y atributos iniciales.'):
+        variables_personalizadas = ''
+        atributos_personalizadas = ''
         with st.form('form_producto'):
             nombre = st.text_input('Nombre del producto')
             tipo = st.selectbox('Tipo de producto', TIPOS_PRODUCTO)

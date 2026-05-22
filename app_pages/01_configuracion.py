@@ -29,6 +29,8 @@ def render_page():
     with section_card('Crear nuevo producto con configuración inicial', 'Agrega un producto y asigna variables y atributos predeterminados para su control.'):
         catalogo_variables = [item['nombre_variable'] for item in queries.get_catalogo_variables()]
         catalogo_atributos = [item['nombre_atributo'] for item in queries.get_catalogo_atributos()]
+        variables_personalizadas = ''
+        atributos_personalizadas = ''
 
         with st.form('form_nuevo_producto'):
             nombre = st.text_input('Nombre del producto')
