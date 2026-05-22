@@ -156,6 +156,19 @@ def get_variable_config_by_id(id_variable: int):
     return row
 
 
+def update_variable_config(id_variable: int, lcs: float | None, lci: float | None, valor_nominal: float | None, tam_subgrupo: int | None) -> None:
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        '''UPDATE VARIABLE_CONFIG
+           SET lcs = ?, lci = ?, valor_nominal = ?, tam_subgrupo = ?
+           WHERE id_variable = ?''',
+        (lcs, lci, valor_nominal, tam_subgrupo, id_variable)
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_variables_by_producto(id_producto: int):
     conn = create_connection()
     rows = conn.execute('SELECT * FROM VARIABLE_CONFIG WHERE id_producto = ? ORDER BY nombre_variable', (id_producto,)).fetchall()

@@ -104,6 +104,30 @@ def render_page():
             else:
                 st.dataframe(variables)
 
+                st.markdown('#### Editar configuración de variable')
+                opciones_vars = [f"{int(row['id_variable'])} - {row['nombre_variable']}" for _, row in variables.iterrows()]
+                var_seleccionada = st.selectbox('Selecciona variable para editar', [''] + opciones_vars)
+                if var_seleccionada:
+                    id_variable = int(var_seleccionada.split(' - ')[0])
+                    config = queries.get_variable_config_by_id(id_variable)
+                    if config:
+                        with st.form(f'form_editar_variable_{id_variable}'):
+                            lcs_val = float(config['lcs']) if config['lcs'] is not None else 0.0
+                            lci_val = float(config['lci']) if config['lci'] is not None else 0.0
+                            valor_nom = float(config['valor_nominal']) if config['valor_nominal'] is not None else 0.0
+                            tam_sub = int(config['tam_subgrupo']) if config['tam_subgrupo'] is not None else 5
+
+                            lci_input = st.number_input('Límite inferior de especificación (LCI)', value=lci_val, format="%.6f")
+                            lcs_input = st.number_input('Límite superior de especificación (LCS)', value=lcs_val, format="%.6f")
+                            valor_nom_input = st.number_input('Valor nominal (opcional)', value=valor_nom, format="%.6f")
+                            tam_sub_input = st.number_input('Tamaño de subgrupo', min_value=2, max_value=25, value=tam_sub)
+
+                            submitted_var = st.form_submit_button('Guardar configuración de variable')
+                            if submitted_var:
+                                queries.update_variable_config(id_variable, float(lcs_input), float(lci_input), float(valor_nom_input), int(tam_sub_input))
+                                st.success('Configuración actualizada correctamente.')
+                                st.rerun()
+
             st.write(f'### Atributos para {producto_seleccionado}')
             if atributos.empty:
                 st.info('No hay configuraciones de atributos para este producto.')
