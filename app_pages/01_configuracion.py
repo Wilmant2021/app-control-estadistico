@@ -66,7 +66,7 @@ def render_page():
                         catalogo_variables=variables_seleccionadas,
                         catalogo_atributos=atributos_seleccionados,
                         variables_personalizadas=[line.strip() for line in variables_personalizadas.splitlines() if line.strip()],
-                        atributos_personalizadas=[line.strip() for line in atributos_personalizadas.splitlines() if line.strip()]
+                        atributos_personalizados=[line.strip() for line in atributos_personalizadas.splitlines() if line.strip()]
                     )
                     st.success('Producto y configuración inicial guardados correctamente.')
                     st.rerun()
