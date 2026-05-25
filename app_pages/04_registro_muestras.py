@@ -212,15 +212,18 @@ def _resolve_or_create_product(nombre_producto, productos, crear_nuevo=False, nu
     if not existing.empty:
         return int(existing.iloc[0]['id_producto'])
     if crear_nuevo and nuevo_producto is not None:
+        tipo = nuevo_producto.get('tipo', '').strip().lower()
+        if tipo not in ('fruta', 'hortaliza', 'planta_medicinal'):
+            tipo = 'planta_medicinal'
         return queries.insert_producto(
             nuevo_producto.get('nombre', nombre).strip(),
-            nuevo_producto.get('tipo', ''),
+            tipo,
             nuevo_producto.get('variedad', ''),
-            nuevo_producto.get('unidad_medida', ''),
+            nuevo_producto.get('unidad_medida', 'unidad'),
             nuevo_producto.get('descripcion', '')
         )
     if crear_nuevo:
-        return queries.insert_producto(nombre, '', '', '', '')
+        return queries.insert_producto(nombre, 'planta_medicinal', '', 'unidad', '')
     return None
 
 
@@ -438,16 +441,22 @@ def render_page():
                         producto_origen = st.radio('Producto destino', ['Producto existente', 'Crear producto nuevo'])
                         if producto_origen == 'Producto existente':
                             producto_seleccionado_excel = st.selectbox('Producto', [''] + productos['nombre'].tolist())
+                            nuevo_producto_nombre = ''
+                            nuevo_producto_tipo = ''
+                            nuevo_producto_variedad = ''
+                            nuevo_producto_unidad = ''
+                            nuevo_producto_descripcion = ''
                         else:
                             nuevo_producto_nombre = st.text_input('Nombre del nuevo producto')
-                            nuevo_producto_tipo = st.text_input('Tipo de producto')
+                            nuevo_producto_tipo = st.selectbox('Tipo de producto', ['fruta', 'hortaliza', 'planta_medicinal'])
                             nuevo_producto_variedad = st.text_input('Variedad')
                             nuevo_producto_unidad = st.text_input('Unidad de medida')
                             nuevo_producto_descripcion = st.text_area('Descripción del nuevo producto')
+                            producto_seleccionado_excel = ''
                     else:
                         producto_seleccionado_excel = ''
                         nuevo_producto_nombre = ''
-                        nuevo_producto_tipo = ''
+                        nuevo_producto_tipo = 'planta_medicinal'
                         nuevo_producto_variedad = ''
                         nuevo_producto_unidad = ''
                         nuevo_producto_descripcion = ''
