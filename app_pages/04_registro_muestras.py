@@ -168,6 +168,87 @@ def _resolve_analista_id(analista, analistas):
     return None
 
 
+def _get_numeric_columns(df):
+    numeric_columns = []
+    for col in df.columns:
+        if pd.to_numeric(df[col], errors='coerce').notna().any():
+            numeric_columns.append(col)
+    return numeric_columns
+
+
+def _get_text_columns(df):
+    return [col for col in df.columns if df[col].astype(str).str.strip().any()]
+
+
+def _parse_column_values(series, dtype=float):
+    values = []
+    for value in series:
+        if pd.isna(value):
+            continue
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            values.append(dtype(value))
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        if dtype is float:
+            try:
+                values.append(float(text))
+                continue
+            except ValueError:
+                pass
+        try:
+            values.append(dtype(text))
+        except ValueError:
+            continue
+    return values
+
+
+def _resolve_or_create_product(nombre_producto, productos, crear_nuevo=False, nuevo_producto=None):
+    nombre = _normalize_value(nombre_producto)
+    if not nombre:
+        return None
+    existing = productos[productos['nombre'].str.strip().str.lower() == nombre.lower()]
+    if not existing.empty:
+        return int(existing.iloc[0]['id_producto'])
+    if crear_nuevo and nuevo_producto is not None:
+        return queries.insert_producto(
+            nuevo_producto.get('nombre', nombre).strip(),
+            nuevo_producto.get('tipo', ''),
+            nuevo_producto.get('variedad', ''),
+            nuevo_producto.get('unidad_medida', ''),
+            nuevo_producto.get('descripcion', '')
+        )
+    if crear_nuevo:
+        return queries.insert_producto(nombre, '', '', '', '')
+    return None
+
+
+def _resolve_or_create_analista(nombre_analista, analistas, crear_nuevo=False, nuevo_analista=None):
+    nombre_completo = _normalize_value(nombre_analista)
+    if not nombre_completo:
+        return None
+    existing = analistas.copy()
+    existing['full_name'] = existing['nombre'].str.strip().str.lower() + ' ' + existing['apellido'].str.strip().str.lower()
+    matches = existing[existing['full_name'] == nombre_completo.lower()]
+    if not matches.empty:
+        return int(matches.iloc[0]['id_analista'])
+    if crear_nuevo:
+        if nuevo_analista is not None and nuevo_analista.get('nombre'):
+            nombre = nuevo_analista.get('nombre').strip()
+            apellido = nuevo_analista.get('apellido', '').strip() or nombre
+            cargo = nuevo_analista.get('cargo', '')
+            contacto = nuevo_analista.get('contacto', '')
+        else:
+            partes = nombre_completo.split()
+            nombre = partes[0]
+            apellido = ' '.join(partes[1:]) if len(partes) > 1 else nombre
+            cargo = ''
+            contacto = ''
+        return queries.insert_analista(nombre, apellido, cargo, contacto)
+    return None
+
+
 def _sheet_type_from_headers(header_map, sheet_name):
     normalized = set(header_map.keys())
     if 'nombre_variable' in normalized or 'valores' in normalized or any(h.startswith('valor') for h in normalized):
@@ -320,28 +401,340 @@ def render_page():
                 sheets = None
 
             if sheets is not None:
-                all_rows = []
-                all_errors = []
-                for sheet_name, df_sheet in sheets.items():
-                    if df_sheet.empty:
-                        continue
-                    rows, errors = _parse_excel_sheet(df_sheet, sheet_name, productos, analistas)
-                    all_rows.extend(rows)
-                    all_errors.extend(errors)
+                sheet_names = list(sheets.keys())
+                sheet_name = st.selectbox('Selecciona la hoja', sheet_names)
+                df_sheet = sheets[sheet_name]
 
-                if all_errors:
-                    st.warning('Algunos registros contienen errores y no se importarán:')
-                    for error in all_errors:
-                        st.write(f'- {error}')
+                if df_sheet.empty:
+                    st.warning('La hoja seleccionada está vacía.')
+                else:
+                    column_list = list(df_sheet.columns)
+                    st.markdown('**Columnas detectadas en la hoja:**')
+                    st.write(column_list)
 
-                if all_rows:
-                    st.write(f'Se encontraron {len(all_rows)} muestras válidas para importar.')
+                    producto_column = st.selectbox('Columna de producto (opcional)', ['<No usar>'] + column_list)
+                    analista_column = st.selectbox('Columna de analista (opcional)', ['<No usar>'] + column_list)
+                    control_type_excel = st.radio('Tipo de control en el Excel', ['Variable', 'Atributo'])
+
+                    numeric_columns = _get_numeric_columns(df_sheet)
+                    if not numeric_columns:
+                        st.warning('No se detectaron columnas numéricas en esta hoja. Revisa el archivo.')
+
+                    if control_type_excel == 'Variable':
+                        value_column = st.selectbox('Columna con valores de la variable', [''] + numeric_columns)
+                        nombre_variable = st.text_input('Nombre de la variable')
+                        tipo_dato = st.selectbox('Tipo de dato', ['continua', 'discreta'])
+                        lci = st.number_input('Límite de control inferior (LCI)', value=0.0)
+                        lcs = st.number_input('Límite de control superior (LCS)', value=0.0)
+                        valor_nominal = st.number_input('Valor nominal', value=0.0)
+                    else:
+                        inspeccionados_column = st.selectbox('Columna N° inspeccionados', [''] + numeric_columns)
+                        defectuosos_column = st.selectbox('Columna N° defectuosos', [''] + numeric_columns)
+                        nombre_atributo = st.text_input('Nombre del atributo')
+                        tipo_grafico = st.selectbox('Tipo de gráfico', ['P', 'NP', 'C', 'U'])
+                        tam_subgrupo = st.number_input('Tamaño del subgrupo para atributo', min_value=1, max_value=1000, value=5)
+
+                    if producto_column == '<No usar>':
+                        producto_origen = st.radio('Producto destino', ['Producto existente', 'Crear producto nuevo'])
+                        if producto_origen == 'Producto existente':
+                            producto_seleccionado_excel = st.selectbox('Producto', [''] + productos['nombre'].tolist())
+                        else:
+                            nuevo_producto_nombre = st.text_input('Nombre del nuevo producto')
+                            nuevo_producto_tipo = st.text_input('Tipo de producto')
+                            nuevo_producto_variedad = st.text_input('Variedad')
+                            nuevo_producto_unidad = st.text_input('Unidad de medida')
+                            nuevo_producto_descripcion = st.text_area('Descripción del nuevo producto')
+                    else:
+                        producto_seleccionado_excel = ''
+                        nuevo_producto_nombre = ''
+                        nuevo_producto_tipo = ''
+                        nuevo_producto_variedad = ''
+                        nuevo_producto_unidad = ''
+                        nuevo_producto_descripcion = ''
+
+                    if analista_column == '<No usar>':
+                        analista_origen = st.radio('Analista destino', ['Analista existente', 'Crear analista nuevo'])
+                        if analista_origen == 'Analista existente':
+                            analista_seleccionado_excel = st.selectbox('Analista', [''] + (analistas['nombre'] + ' ' + analistas['apellido']).tolist())
+                        else:
+                            nuevo_analista_nombre = st.text_input('Nombre del analista')
+                            nuevo_analista_apellido = st.text_input('Apellido del analista')
+                            nuevo_analista_cargo = st.text_input('Cargo')
+                            nuevo_analista_contacto = st.text_input('Contacto')
+                    else:
+                        analista_seleccionado_excel = ''
+                        nuevo_analista_nombre = ''
+                        nuevo_analista_apellido = ''
+                        nuevo_analista_cargo = ''
+                        nuevo_analista_contacto = ''
+
+                    crear_productos_nuevos = st.checkbox('Crear productos nuevos automáticamente si no existen', value=True)
+                    crear_analistas_nuevos = st.checkbox('Crear analistas nuevos automáticamente si no existen', value=True)
+
                     if st.button('Registrar muestras desde Excel'):
-                        registered = _register_excel_samples(all_rows)
-                        st.success(f'Se registraron {len(registered)} muestras desde Excel.')
-                        st.experimental_rerun()
-                elif not all_errors:
-                    st.info('No se encontraron muestras válidas en el archivo Excel. Revisa los nombres de las columnas y los datos.')
+                        errors = []
+                        rows_to_register = []
+                        product_cache = {}
+                        analyst_cache = {}
+
+                        def get_product_id_for_name(product_name):
+                            normalized = _normalize_value(product_name)
+                            if not normalized:
+                                return None
+                            if normalized in product_cache:
+                                return product_cache[normalized]
+                            product_id = _resolve_or_create_product(
+                                normalized,
+                                productos,
+                                crear_nuevo=crear_productos_nuevos,
+                                nuevo_producto={
+                                    'nombre': normalized,
+                                    'tipo': nuevo_producto_tipo,
+                                    'variedad': nuevo_producto_variedad,
+                                    'unidad_medida': nuevo_producto_unidad,
+                                    'descripcion': nuevo_producto_descripcion,
+                                }
+                            )
+                            if product_id:
+                                product_cache[normalized] = product_id
+                            return product_id
+
+                        def get_analyst_id_for_name(analyst_name):
+                            normalized = _normalize_value(analyst_name)
+                            if not normalized:
+                                return None
+                            if normalized in analyst_cache:
+                                return analyst_cache[normalized]
+                            analyst_id = _resolve_or_create_analista(
+                                normalized,
+                                analistas,
+                                crear_nuevo=crear_analistas_nuevos,
+                                nuevo_analista={
+                                    'nombre': nuevo_analista_nombre or normalized.split()[0],
+                                    'apellido': nuevo_analista_apellido or ' '.join(normalized.split()[1:]) if len(normalized.split()) > 1 else normalized,
+                                    'cargo': nuevo_analista_cargo,
+                                    'contacto': nuevo_analista_contacto,
+                                }
+                            )
+                            if analyst_id:
+                                analyst_cache[normalized] = analyst_id
+                            return analyst_id
+
+                        if producto_column == '<No usar>':
+                            if producto_origen == 'Producto existente' and not producto_seleccionado_excel:
+                                errors.append('Debes seleccionar un producto destino.')
+                            if producto_origen == 'Crear producto nuevo' and not nuevo_producto_nombre.strip():
+                                errors.append('Debes ingresar el nombre del nuevo producto.')
+                            if producto_origen == 'Producto existente':
+                                default_product_id = _resolve_or_create_product(producto_seleccionado_excel, productos, crear_nuevo=False)
+                            else:
+                                default_product_id = _resolve_or_create_product(nuevo_producto_nombre, productos, crear_nuevo=True, nuevo_producto={
+                                    'nombre': nuevo_producto_nombre,
+                                    'tipo': nuevo_producto_tipo,
+                                    'variedad': nuevo_producto_variedad,
+                                    'unidad_medida': nuevo_producto_unidad,
+                                    'descripcion': nuevo_producto_descripcion,
+                                })
+                        else:
+                            default_product_id = None
+
+                        if analista_column == '<No usar>':
+                            if analista_origen == 'Analista existente' and not analista_seleccionado_excel:
+                                errors.append('Debes seleccionar un analista destino.')
+                            if analista_origen == 'Crear analista nuevo' and not nuevo_analista_nombre.strip():
+                                errors.append('Debes ingresar el nombre del nuevo analista.')
+                            if analista_origen == 'Analista existente':
+                                default_analyst_id = _resolve_or_create_analista(analista_seleccionado_excel, analistas, crear_nuevo=False)
+                            else:
+                                default_analyst_id = _resolve_or_create_analista(
+                                    f'{nuevo_analista_nombre} {nuevo_analista_apellido}',
+                                    analistas,
+                                    crear_nuevo=True,
+                                    nuevo_analista={
+                                        'nombre': nuevo_analista_nombre,
+                                        'apellido': nuevo_analista_apellido,
+                                        'cargo': nuevo_analista_cargo,
+                                        'contacto': nuevo_analista_contacto,
+                                    }
+                                )
+                        else:
+                            default_analyst_id = None
+
+                        if control_type_excel == 'Variable':
+                            if not value_column:
+                                errors.append('Debes seleccionar la columna de valores de la variable.')
+                            if not nombre_variable.strip():
+                                errors.append('Debes ingresar el nombre de la variable para la importación.')
+                        else:
+                            if not inspeccionados_column:
+                                errors.append('Debes seleccionar la columna de inspeccionados.')
+                            if not defectuosos_column:
+                                errors.append('Debes seleccionar la columna de defectuosos.')
+                            if not nombre_atributo.strip():
+                                errors.append('Debes ingresar el nombre del atributo para la importación.')
+
+                        if errors:
+                            for error in errors:
+                                st.error(error)
+                        else:
+                            if control_type_excel == 'Variable':
+                                if producto_column == '<No usar>':
+                                    product_id = default_product_id
+                                    if product_id is None:
+                                        st.error('No existe el producto destino.')
+                                        return
+                                else:
+                                    product_id = None
+
+                                if analista_column == '<No usar>':
+                                    analyst_id = default_analyst_id
+                                    if analyst_id is None:
+                                        st.error('No existe el analista destino.')
+                                        return
+                                else:
+                                    analyst_id = None
+
+                                if producto_column == '<No usar>' and analista_column == '<No usar>':
+                                    values = _parse_column_values(df_sheet[value_column], float)
+                                    if len(values) < 2:
+                                        st.error('La columna seleccionada no tiene suficientes valores numéricos.')
+                                    else:
+                                        rows_to_register.append({
+                                            'tipo_control': 'variable',
+                                            'producto_id': product_id,
+                                            'analista_id': analyst_id,
+                                            'fecha_hora': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                            'num_subgrupo': 1,
+                                            'lote': '',
+                                            'origen': '',
+                                            'observaciones': '',
+                                            'nombre_variable': nombre_variable.strip(),
+                                            'tipo_dato': tipo_dato,
+                                            'lcs': lcs,
+                                            'lci': lci,
+                                            'valor_nominal': valor_nominal,
+                                            'valores': values,
+                                        })
+                                else:
+                                    grouped = df_sheet.groupby(producto_column) if producto_column != '<No usar>' else [('__fixed__', df_sheet)]
+                                    for product_name, group in grouped:
+                                        if producto_column == '<No usar>':
+                                            product_id = default_product_id
+                                        else:
+                                            product_id = get_product_id_for_name(product_name)
+                                            if not product_id:
+                                                errors.append(f'Producto "{product_name}" no existe y no se puede crear.')
+                                                continue
+                                        if analista_column == '<No usar>':
+                                            analyst_id = default_analyst_id
+                                        else:
+                                            first_analyst = group[analista_column].astype(str).str.strip()
+                                            first_analyst = first_analyst[first_analyst != '']
+                                            analyst_id = get_analyst_id_for_name(first_analyst.iloc[0]) if not first_analyst.empty else default_analyst_id
+                                        if analyst_id is None:
+                                            errors.append(f'No se pudo resolver el analista para producto "{product_name}".')
+                                            continue
+                                        values = _parse_column_values(group[value_column], float)
+                                        if len(values) < 2:
+                                            errors.append(f'Producto "{product_name}" no tiene suficientes valores numéricos en la columna seleccionada.')
+                                            continue
+                                        rows_to_register.append({
+                                            'tipo_control': 'variable',
+                                            'producto_id': product_id,
+                                            'analista_id': analyst_id,
+                                            'fecha_hora': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                            'num_subgrupo': 1,
+                                            'lote': '',
+                                            'origen': '',
+                                            'observaciones': '',
+                                            'nombre_variable': nombre_variable.strip(),
+                                            'tipo_dato': tipo_dato,
+                                            'lcs': lcs,
+                                            'lci': lci,
+                                            'valor_nominal': valor_nominal,
+                                            'valores': values,
+                                        })
+                            else:
+                                if producto_column == '<No usar>':
+                                    product_id = default_product_id
+                                    if product_id is None:
+                                        st.error('No existe el producto destino.')
+                                        return
+                                else:
+                                    product_id = None
+                                if analista_column == '<No usar>':
+                                    analyst_id = default_analyst_id
+                                    if analyst_id is None:
+                                        st.error('No existe el analista destino.')
+                                        return
+                                else:
+                                    analyst_id = None
+                                if producto_column == '<No usar>':
+                                    inspected = _parse_column_values(df_sheet[inspeccionados_column], int)
+                                    defected = _parse_column_values(df_sheet[defectuosos_column], int)
+                                    if len(inspected) == 0 or len(inspected) != len(defected):
+                                        st.error('Las columnas seleccionadas no tienen juegos válidos de inspeccionados y defectuosos.')
+                                    else:
+                                        rows_to_register.append({
+                                            'tipo_control': 'atributo',
+                                            'producto_id': product_id,
+                                            'analista_id': analyst_id,
+                                            'fecha_hora': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                            'num_subgrupo': tam_subgrupo,
+                                            'lote': '',
+                                            'origen': '',
+                                            'observaciones': '',
+                                            'nombre_atributo': nombre_atributo.strip(),
+                                            'tipo_grafico': tipo_grafico,
+                                            'tam_subgrupo': tam_subgrupo,
+                                            'inspeccionados': inspected,
+                                            'defectuosos': defected,
+                                        })
+                                else:
+                                    grouped = df_sheet.groupby(producto_column)
+                                    for product_name, group in grouped:
+                                        product_id = get_product_id_for_name(product_name)
+                                        if not product_id:
+                                            errors.append(f'Producto "{product_name}" no existe y no se puede crear.')
+                                            continue
+                                        if analista_column != '<No usar>':
+                                            first_analyst = group[analista_column].astype(str).str.strip()
+                                            first_analyst = first_analyst[first_analyst != '']
+                                            analyst_id = get_analyst_id_for_name(first_analyst.iloc[0]) if not first_analyst.empty else default_analyst_id
+                                        else:
+                                            analyst_id = default_analyst_id
+                                        if analyst_id is None:
+                                            errors.append(f'No se pudo resolver el analista para producto "{product_name}".')
+                                            continue
+                                        inspected = _parse_column_values(group[inspeccionados_column], int)
+                                        defected = _parse_column_values(group[defectuosos_column], int)
+                                        if len(inspected) == 0 or len(inspected) != len(defected):
+                                            errors.append(f'Producto "{product_name}" no tiene juegos válidos de inspeccionados y defectuosos.')
+                                            continue
+                                        rows_to_register.append({
+                                            'tipo_control': 'atributo',
+                                            'producto_id': product_id,
+                                            'analista_id': analyst_id,
+                                            'fecha_hora': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                            'num_subgrupo': tam_subgrupo,
+                                            'lote': '',
+                                            'origen': '',
+                                            'observaciones': '',
+                                            'nombre_atributo': nombre_atributo.strip(),
+                                            'tipo_grafico': tipo_grafico,
+                                            'tam_subgrupo': tam_subgrupo,
+                                            'inspeccionados': inspected,
+                                            'defectuosos': defected,
+                                        })
+                            if errors:
+                                for error in errors:
+                                    st.error(error)
+                            elif rows_to_register:
+                                registered = _register_excel_samples(rows_to_register)
+                                st.success(f'Se registraron {len(registered)} muestras desde Excel.')
+                                st.experimental_rerun()
+                            else:
+                                st.info('No se registraron muestras. Revisa los datos y selecciona las columnas correctas.')
 
     with section_card('Datos de muestra', 'Selecciona producto, analista y configura la muestra antes de registrarla.'):
         if productos.empty or analistas.empty:
