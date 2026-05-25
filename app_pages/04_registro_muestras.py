@@ -310,6 +310,39 @@ def render_page():
     productos = pd.DataFrame(queries.get_productos())
     analistas = pd.DataFrame(queries.get_analistas())
 
+    with section_card('Carga masiva desde Excel', 'Sube un archivo Excel para registrar varias muestras en bloque.'):
+        excel_file = st.file_uploader('Selecciona un archivo Excel (.xlsx)', type=['xlsx'])
+        if excel_file is not None:
+            try:
+                sheets = pd.read_excel(excel_file, sheet_name=None)
+            except Exception as error:
+                st.error(f'No se pudo leer el archivo Excel: {error}')
+                sheets = None
+
+            if sheets is not None:
+                all_rows = []
+                all_errors = []
+                for sheet_name, df_sheet in sheets.items():
+                    if df_sheet.empty:
+                        continue
+                    rows, errors = _parse_excel_sheet(df_sheet, sheet_name, productos, analistas)
+                    all_rows.extend(rows)
+                    all_errors.extend(errors)
+
+                if all_errors:
+                    st.warning('Algunos registros contienen errores y no se importarán:')
+                    for error in all_errors:
+                        st.write(f'- {error}')
+
+                if all_rows:
+                    st.write(f'Se encontraron {len(all_rows)} muestras válidas para importar.')
+                    if st.button('Registrar muestras desde Excel'):
+                        registered = _register_excel_samples(all_rows)
+                        st.success(f'Se registraron {len(registered)} muestras desde Excel.')
+                        st.experimental_rerun()
+                elif not all_errors:
+                    st.info('No se encontraron muestras válidas en el archivo Excel. Revisa los nombres de las columnas y los datos.')
+
     with section_card('Datos de muestra', 'Selecciona producto, analista y configura la muestra antes de registrarla.'):
         if productos.empty or analistas.empty:
             st.warning('Necesitas al menos un producto y un analista para registrar muestras.')
@@ -400,36 +433,3 @@ def render_page():
                             queries.insert_medicion_atributo(muestra_id, id_atributo, int(n), int(d))
                         st.success('Muestra de atributo registrada correctamente.')
                         st.rerun()
-
-    with section_card('Carga masiva desde Excel', 'Sube un archivo Excel para registrar varias muestras en bloque.'):
-        excel_file = st.file_uploader('Selecciona un archivo Excel (.xlsx)', type=['xlsx'])
-        if excel_file is not None:
-            try:
-                sheets = pd.read_excel(excel_file, sheet_name=None)
-            except Exception as error:
-                st.error(f'No se pudo leer el archivo Excel: {error}')
-                sheets = None
-
-            if sheets is not None:
-                all_rows = []
-                all_errors = []
-                for sheet_name, df_sheet in sheets.items():
-                    if df_sheet.empty:
-                        continue
-                    rows, errors = _parse_excel_sheet(df_sheet, sheet_name, productos, analistas)
-                    all_rows.extend(rows)
-                    all_errors.extend(errors)
-
-                if all_errors:
-                    st.warning('Algunos registros contienen errores y no se importarán:')
-                    for error in all_errors:
-                        st.write(f'- {error}')
-
-                if all_rows:
-                    st.write(f'Se encontraron {len(all_rows)} muestras válidas para importar.')
-                    if st.button('Registrar muestras desde Excel'):
-                        registered = _register_excel_samples(all_rows)
-                        st.success(f'Se registraron {len(registered)} muestras desde Excel.')
-                        st.experimental_rerun()
-                elif not all_errors:
-                    st.info('No se encontraron muestras válidas en el archivo Excel. Revisa los nombres de las columnas y los datos.')
